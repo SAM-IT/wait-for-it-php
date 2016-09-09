@@ -15,7 +15,10 @@ function help() {
 function error($message, $code)
 {
     fwrite(STDERR, $message . "\n");
-    help();
+
+    if ($code == EXIT_MISCONFIGURATION) {
+        help();
+    }
     exit($code);
 }
 
@@ -53,7 +56,7 @@ function validateConfiguration() {
         $args = array_slice($_SERVER['argv'], $pos + 2);
         $cmd = $_SERVER['argv'][$pos + 1];
         $options['runner'] = function() use ($args, $cmd) {
-            echo "Running: $cmd\n";
+            echo "Running: $cmd [" . implode(' ', $args) . "]\n";
             pcntl_exec($cmd, $args, $_ENV);
         };
     }
