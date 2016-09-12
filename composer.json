@@ -1,0 +1,14 @@
+{
+    "name": "sam-it/wait-for-it",
+    "description": "PHP Cli utility to wait for servers to become available.",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Sam Mousa",
+            "email": "sam@mousa.nl"
+        }
+    ],
+    "require": {
+        "react/socket-client": "^0.5.0"
+    }
+}

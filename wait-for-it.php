@@ -1,6 +1,10 @@
-#!/usr/bin/env php
 <?php
 
+require_once 'vendor/autoload.php';
+
+$loop = \React\EventLoop\Factory::create();
+
+const EXIT_OK = 0;
 const EXIT_MISCONFIGURATION = 2;
 const EXIT_RUNTIME = 3;
 const EXIT_TIMEOUT = 4;
@@ -64,67 +68,41 @@ function validateConfiguration() {
     $options['t'] = intval(array_pop($options['t']));
     return $options;
 }
-function run() {
+function setup($loop) {
     $options = validateConfiguration();
-    waitFor($options['h'], $options['t'], isset($options['runner']) ? $options['runner'] : null);
+    waitFor($options['h'], $options['t'], isset($options['runner']) ? $options['runner'] : function() { error("All good.", EXIT_OK); }, $loop);
 
 }
 
-function waitFor(array $targets, $timeout, \Closure $success = null) {
+function waitFor(array $targets, $timeout, \Closure $success = null, \React\EventLoop\LoopInterface $loop) {
+    $tcpConnector = new \React\SocketClient\TcpConnector($loop);
+    $dns = (new \React\Dns\Resolver\Factory)->create('8.8.4.4', $loop);
+    $connector = new \React\SocketClient\DnsConnector($tcpConnector, $dns);
+    $promises = [];
     foreach ($targets as $target) {
         list($host, $port) = explode(':', $target);
-
-        if (!preg_match('/(\d+\.){3}\d+/', $host)) {
-            echo "Resolving $host.. ";
-            $host = gethostbyname($host);
-            echo "--> $host\n";
-        }
-        $sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
-        $sockets[intval($sock)] = $sock;
-        $definitions[intval($sock)] = [$host, $port];
-        if ($sock !== false) {
-            socket_set_nonblock($sock);
-            socket_connect($sock, $host, $port);
-            socket_clear_error($sock);
-        } else {
-            error("Failed to create socket for: $host : $port", EXIT_RUNTIME);
-        }
+        /** @var \React\Promise\Promise $promise */
+        $promises[] = $promise = $connector->create($host, $port);
+        $promise->done(function() use ($host, $port) {
+            echo ("Connection to $host:$port OK\n");
+        }, function(\Exception $e) use ($host, $port) {
+            error("Connection to $host:$port failed: {$e->getMessage()}", EXIT_RUNTIME);
+        }, function() {
+            var_dump(func_get_args());
+        });
     }
-    echo "All sockets set up. Timeout: $timeout.\n";
-    $startTime = microtime(true);
-    while (!empty($sockets) && microtime(true) - $startTime < $timeout) {
-        $read = $sockets;
-        $write = $sockets;
-        $except = $sockets;
 
-        socket_select($read, $write, $except, ceil($timeout - (microtime(true) - $startTime)));
-        foreach (array_unique(array_merge($read, $write, $except)) as $sock) {
-            $k = intval($sock);
-            $status = socket_last_error($sock);
-            socket_clear_error($sock);
-            if ($status === 0) {
-                echo "Connected to: {$definitions[$k][0]}:{$definitions[$k][1]} -- $status >> " . socket_strerror($status) . "\n";
-                unset($sockets[intval($sock)]);
+    $timer = $loop->addTimer($timeout, function() {
+        error("Timeout", EXIT_TIMEOUT);
+    });
 
-            } elseif (in_array($status, [111])) {
-                die("Connection to {$definitions[$k][0]}:{$definitions[$k][1]} failed: " . socket_strerror($status) . "\n");
-            } else {
-                echo "{$definitions[$k][0]}:{$definitions[$k][1]} -- $status >> " . socket_strerror($status) . "\n";
-            }
-
-
-
-        }
-        sleep(1);
-    }
-    if (!empty($sockets)) {
-        error("Timeout occured.", EXIT_TIMEOUT);
-    } elseif (isset($success)) {
+    \React\Promise\all($promises)->then(function($values) use ($success, $timer) {
+        $timer->cancel();
         $success();
-    } else {
-        error("All targets are up.", 0);
-    }
+    });
+
 
 }
 
-run();
+setup($loop);
+$loop->run();
