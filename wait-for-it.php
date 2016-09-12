@@ -13,7 +13,9 @@ const EXIT_TIMEOUT = 4;
  */
 function help() {
     fwrite(STDERR, "Usage information:\n");
-    fwrite(STDERR,  "-h host:port [-h host:port] [-t 10]\n");
+    fwrite(STDERR,  "-h host:port Wait for host:port\n");
+    fwrite(STDERR,  "-f path Wait for file existence\n");
+    fwrite(STDERR,  "-t integer[10] Timeout\n");
 }
 
 function error($message, $code)
@@ -30,11 +32,12 @@ function validateConfiguration() {
     // Parse arguments.
     $defaults = [
         'h' => [],
+        'f' => [],
         't' => [
             10
         ]
     ];
-    $options = array_merge_recursive($defaults, getopt('t:h:', [
+    $options = array_merge_recursive($defaults, getopt('t:h:f:', [
         'help'
     ]));
 
@@ -43,8 +46,8 @@ function validateConfiguration() {
         exit(0);
     }
 
-    if (empty($options['h'])) {
-        error("At least one host must be specified.", EXIT_MISCONFIGURATION);
+    if (empty($options['h']) && empty($options['f'])) {
+        error("At least one host or path must be specified.", EXIT_MISCONFIGURATION);
     }
 
     foreach($options['h'] as $target) {
@@ -70,11 +73,27 @@ function validateConfiguration() {
 }
 function setup($loop) {
     $options = validateConfiguration();
-    waitFor($options['h'], $options['t'], isset($options['runner']) ? $options['runner'] : function() { error("All good.", EXIT_OK); }, $loop);
+    $promise = \React\Promise\all([
+        waitForServers($options['h'], $loop),
+        waitForFiles($options['f'], $loop)
+    ]);
+
+    $timer = $loop->addTimer($options['t'], function() {
+        error("Timeout", EXIT_TIMEOUT);
+    });
+
+
+    $promise->then(function() use ($options) {
+        if (isset($options['runner'])) {
+            $options['runner']();
+        } else {
+            error("All good.", EXIT_OK);
+        }
+    });
 
 }
 
-function waitFor(array $targets, $timeout, \Closure $success = null, \React\EventLoop\LoopInterface $loop) {
+function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
     $tcpConnector = new \React\SocketClient\TcpConnector($loop);
     $dns = (new \React\Dns\Resolver\Factory)->create('8.8.4.4', $loop);
     $connector = new \React\SocketClient\DnsConnector($tcpConnector, $dns);
@@ -92,16 +111,24 @@ function waitFor(array $targets, $timeout, \Closure $success = null, \React\Even
         });
     }
 
-    $timer = $loop->addTimer($timeout, function() {
-        error("Timeout", EXIT_TIMEOUT);
-    });
+    return \React\Promise\all($promises);
+}
 
-    \React\Promise\all($promises)->then(function($values) use ($success, $timer) {
-        $timer->cancel();
-        $success();
-    });
+function waitForFiles(array $targets, \React\EventLoop\LoopInterface $loop) {
 
 
+    $promises = [];
+    foreach($targets as $target) {
+        $deferred = new React\Promise\Deferred();
+        $promises[] =  $deferred->promise();
+        $loop->addPeriodicTimer(1, function() use ($deferred, $target) {
+            if (file_exists($target)) {
+                $deferred->resolve(true);
+            }
+        });
+    }
+
+    return \React\Promise\all($promises);
 }
 
 setup($loop);
