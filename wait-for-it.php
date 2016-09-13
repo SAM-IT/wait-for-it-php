@@ -128,10 +128,10 @@ function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
         list($ip, $port) = explode(':', $target);
         /** @var \React\Promise\Promise $promise */
         $promises[] = $promise = $connector->create($ip, $port);
-        $promise->done(function() use ($host, $port) {
-            echo ("Connection to $host:$port OK\n");
-        }, function(\Exception $e) use ($host, $port) {
-            error("Connection to $host:$port failed: {$e->getMessage()}", EXIT_RUNTIME);
+        $promise->done(function() use ($ip, $port) {
+            echo ("Connection to $ip:$port OK\n");
+        }, function(\Exception $e) use ($ip, $port) {
+            error("Connection to $ip:$port failed: {$e->getMessage()}", EXIT_RUNTIME);
         }, function() {
             var_dump(func_get_args());
         });
