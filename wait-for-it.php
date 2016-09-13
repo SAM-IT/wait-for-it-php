@@ -83,7 +83,8 @@ function setup($loop) {
     });
 
 
-    $promise->then(function() use ($options) {
+    $promise->then(function() use ($options, $timer) {
+        $timer->cancel();
         if (isset($options['runner'])) {
             $options['runner']();
         } else {
