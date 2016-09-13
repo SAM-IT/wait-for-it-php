@@ -4,6 +4,7 @@ require_once 'vendor/autoload.php';
 
 $loop = \React\EventLoop\Factory::create();
 
+
 const EXIT_OK = 0;
 const EXIT_MISCONFIGURATION = 2;
 const EXIT_RUNTIME = 3;
@@ -28,6 +29,26 @@ function error($message, $code)
     exit($code);
 }
 
+function getHosts()
+{
+// Load hosts file.
+    $hosts = [];
+    if (file_exists('/etc/hosts')) {
+        foreach (file('/etc/hosts') as $record) {
+            if (preg_match_all('/(.+?)(?:\s+|$)/', $record, $matches)) {
+                $ip = array_shift($matches[1]);
+                if ($ip === '#') {
+                    continue;
+                }
+                foreach ($matches[1] as $name) {
+                    $hosts[$name] = $ip;
+                }
+            }
+        }
+    }
+    return $hosts;
+}
+
 function validateConfiguration() {
     // Parse arguments.
     $defaults = [
@@ -50,11 +71,15 @@ function validateConfiguration() {
         error("At least one host or path must be specified.", EXIT_MISCONFIGURATION);
     }
 
-    foreach($options['h'] as $target) {
-        if (!preg_match('/^.*:(\d+)$/', $target, $matches)) {
+    $hosts = getHosts();
+
+    foreach($options['h'] as &$target) {
+        if (!preg_match('/^(?<host>.*):(?<port>\d+)$/', $target, $matches)) {
             error("Invalid host specification: $target", EXIT_MISCONFIGURATION);
         } elseif (intval($matches[1]) > 65535) {
-            error("Invalid port: {$matches[1]}", EXIT_MISCONFIGURATION);
+            error("Invalid port: {$matches['port']}", EXIT_MISCONFIGURATION);
+        } elseif (isset($hosts[$matches['host']])) {
+            $target = "{$hosts[$matches['host']]}:{$matches['port']}";
         }
     }
 

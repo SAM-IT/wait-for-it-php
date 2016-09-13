@@ -1,5 +1,5 @@
 <?php
-
+Phar::interceptFileFuncs();
 $file = __DIR__ . "/wait-for-it.phar";
 $phar = new Phar(__DIR__ . "/wait-for-it.phar");
 $phar->startBuffering();
