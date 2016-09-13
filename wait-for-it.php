@@ -80,6 +80,8 @@ function validateConfiguration() {
             error("Invalid port: {$matches['port']}", EXIT_MISCONFIGURATION);
         } elseif (isset($hosts[$matches['host']])) {
             $target = "{$hosts[$matches['host']]}:{$matches['port']}";
+        } else {
+            $target = gethostbyname($matches['host']) . ":{$matches['port']}";
         }
     }
 
@@ -120,14 +122,12 @@ function setup($loop) {
 }
 
 function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
-    $tcpConnector = new \React\SocketClient\TcpConnector($loop);
-    $dns = (new \React\Dns\Resolver\Factory)->create('8.8.4.4', $loop);
-    $connector = new \React\SocketClient\DnsConnector($tcpConnector, $dns);
+    $connector = new \React\SocketClient\TcpConnector($loop);
     $promises = [];
     foreach ($targets as $target) {
-        list($host, $port) = explode(':', $target);
+        list($ip, $port) = explode(':', $target);
         /** @var \React\Promise\Promise $promise */
-        $promises[] = $promise = $connector->create($host, $port);
+        $promises[] = $promise = $connector->create($ip, $port);
         $promise->done(function() use ($host, $port) {
             echo ("Connection to $host:$port OK\n");
         }, function(\Exception $e) use ($host, $port) {
