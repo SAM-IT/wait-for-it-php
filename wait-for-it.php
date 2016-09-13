@@ -29,6 +29,11 @@ function error($message, $code)
     exit($code);
 }
 
+function printStatus($status) {
+    foreach($status as $target => $message) {
+        echo str_pad($target, 20, " ", STR_PAD_RIGHT) . "| " . $message . "\n";
+    }
+}
 function getHosts()
 {
 // Load hosts file.
@@ -125,8 +130,10 @@ function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
     $connector = new \React\SocketClient\TcpConnector($loop);
     $promises = [];
 
+    $status = [];
     foreach ($targets as $target) {
         list($ip, $port) = explode(':', $target);
+        $status[$target] = 'Waiting';
         $targetResult = new \React\Promise\Deferred();
         $promises[] = $promise = $targetResult->promise();
         /**
@@ -142,7 +149,6 @@ function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
         $retry = function() use ($loop, $createPromise, &$retry) {
             // Retry in 1 sec.
             $loop->addTimer(1, function() use ($createPromise, $retry) {
-                echo '.';
                 /** @var \React\Promise\Promise $p */
                 $createPromise($retry);
             });
@@ -150,12 +156,15 @@ function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
 
 
         $createPromise($retry);
+        unset($retry);
 
-        $promise->then(function() use ($ip, $port) { echo "Connected to: $ip:$port\n"; });
-
-
+        $promise->then(function() use (&$status, $target) {
+            $status[$target] = 'OK';
+        });
     }
 
+    printStatus($status);
+    $loop->addPeriodicTimer(5, function() use ($status) { printStatus($status); });
     return \React\Promise\all($promises);
 }
 
