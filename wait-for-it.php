@@ -128,28 +128,31 @@ function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
     foreach ($targets as $target) {
         list($ip, $port) = explode(':', $target);
         $targetResult = new \React\Promise\Deferred();
-
+        $promises[] = $promise = $targetResult->promise();
         /**
          * @return \React\Promise\PromiseInterface
          */
-        $createPromise = function() use ($ip, $port, $connector, $targetResult) {
-            return $connector->create($ip, $port)->then([$targetResult, 'resolve']);
+        $createPromise = function(\Closure $otherwise) use ($ip, $port, $connector, $targetResult) {
+            return $connector->create($ip, $port)
+                ->then(function() use ($targetResult) {
+                    $targetResult->resolve();
+                }, $otherwise);
         };
 
-        $retry = function(\Exception $e) use ($loop, $createPromise, &$retry) {
+        $retry = function() use ($loop, $createPromise, &$retry) {
             // Retry in 1 sec.
             $loop->addTimer(1, function() use ($createPromise, $retry) {
+                echo '.';
                 /** @var \React\Promise\Promise $p */
-                $p = $createPromise();
-                $p->otherwise($retry);
+                $createPromise($retry);
             });
         };
 
-        /** @var \React\Promise\Promise $promise */
-        $promise = $createPromise();
-        $promise->otherwise($retry);
 
-        $promises[] = $targetResult->promise();
+        $createPromise($retry);
+
+        $promise->then(function() use ($ip, $port) { echo "Connected to: $ip:$port\n"; });
+
 
     }
 
@@ -174,4 +177,5 @@ function waitForFiles(array $targets, \React\EventLoop\LoopInterface $loop) {
 }
 
 setup($loop);
+echo "Starting loop\n";
 $loop->run();
