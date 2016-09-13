@@ -124,17 +124,33 @@ function setup($loop) {
 function waitForServers(array $targets, \React\EventLoop\LoopInterface $loop) {
     $connector = new \React\SocketClient\TcpConnector($loop);
     $promises = [];
+
     foreach ($targets as $target) {
         list($ip, $port) = explode(':', $target);
+        $targetResult = new \React\Promise\Deferred();
+
+        /**
+         * @return \React\Promise\PromiseInterface
+         */
+        $createPromise = function() use ($ip, $port, $connector, $targetResult) {
+            return $connector->create($ip, $port)->then([$targetResult, 'resolve']);
+        };
+
+        $retry = function(\Exception $e) use ($loop, $createPromise, &$retry) {
+            // Retry in 1 sec.
+            $loop->addTimer(1, function() use ($createPromise, $retry) {
+                /** @var \React\Promise\Promise $p */
+                $p = $createPromise();
+                $p->otherwise($retry);
+            });
+        };
+
         /** @var \React\Promise\Promise $promise */
-        $promises[] = $promise = $connector->create($ip, $port);
-        $promise->done(function() use ($ip, $port) {
-            echo ("Connection to $ip:$port OK\n");
-        }, function(\Exception $e) use ($ip, $port) {
-            error("Connection to $ip:$port failed: {$e->getMessage()}", EXIT_RUNTIME);
-        }, function() {
-            var_dump(func_get_args());
-        });
+        $promise = $createPromise();
+        $promise->otherwise($retry);
+
+        $promises[] = $targetResult->promise();
+
     }
 
     return \React\Promise\all($promises);
