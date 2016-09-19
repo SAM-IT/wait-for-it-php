@@ -9,6 +9,42 @@ const EXIT_OK = 0;
 const EXIT_MISCONFIGURATION = 2;
 const EXIT_RUNTIME = 3;
 const EXIT_TIMEOUT = 4;
+
+/**
+ *
+ * @param string $target IP, environment variable or host name.
+ */
+function resolveTarget($target)
+{
+    if (!preg_match('/^(?<host>.*):(?<port>\d+)$/', $target, $matches)) {
+        error("Invalid host specification: $target", EXIT_MISCONFIGURATION);
+    } elseif (intval($matches[1]) > 65535) {
+        error("Invalid port: {$matches['port']}", EXIT_MISCONFIGURATION);
+    } else {
+        /**
+         * Special check for environment vars.
+         * @see https://github.com/docker/compose/issues/3959
+         */
+        if($matches['host'][0] == '$') {
+            $hostName = getenv(substr($matches['host'], 1));
+            if ($hostName === false) {
+                error("Invalid host name, or environment variable not set: {$matches['host']}", EXIT_RUNTIME);
+            }
+        } else {
+            $hostName = $matches['host'];
+        }
+        $port = $matches['port'];
+
+
+        // Check hosts file
+        $hosts = getHosts();
+        if (isset($hosts[$hostName])) {
+            return "{$hosts[$hostName]}:$port";
+        } else {
+            return gethostbyname($hostName) . ":$port";
+        }
+    }
+}
 /**
  * Output usage / help.
  */
@@ -79,15 +115,7 @@ function validateConfiguration() {
     $hosts = getHosts();
 
     foreach($options['h'] as &$target) {
-        if (!preg_match('/^(?<host>.*):(?<port>\d+)$/', $target, $matches)) {
-            error("Invalid host specification: $target", EXIT_MISCONFIGURATION);
-        } elseif (intval($matches[1]) > 65535) {
-            error("Invalid port: {$matches['port']}", EXIT_MISCONFIGURATION);
-        } elseif (isset($hosts[$matches['host']])) {
-            $target = "{$hosts[$matches['host']]}:{$matches['port']}";
-        } else {
-            $target = gethostbyname($matches['host']) . ":{$matches['port']}";
-        }
+        $target = resolveTarget($target);
     }
 
     $pos = array_search('--', $_SERVER['argv']);
