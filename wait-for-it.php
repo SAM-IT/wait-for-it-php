@@ -122,6 +122,10 @@ function validateConfiguration() {
     if ($pos !== false) {
         $args = array_slice($_SERVER['argv'], $pos + 2);
         $cmd = $_SERVER['argv'][$pos + 1];
+        if (!file_exists($cmd)) {
+            echo "File '$cmd' does not exist.\n";
+            exit(1);
+        }
         $options['runner'] = function() use ($args, $cmd) {
             echo "Running: $cmd [" . implode(' ', $args) . "]\n";
             pcntl_exec($cmd, $args, $_ENV);
