@@ -129,6 +129,8 @@ function validateConfiguration() {
         $options['runner'] = function() use ($args, $cmd) {
             echo "Running: $cmd [" . implode(' ', $args) . "]\n";
             pcntl_exec($cmd, $args, $_ENV);
+            echo 'Failed to execute.';
+            exit(1);
         };
     }
 
